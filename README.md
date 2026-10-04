@@ -6,6 +6,12 @@ No login. No accounts. No cloud. No printer drivers. No App Store.
 Your Mac already knows how to print to any AirPrint / IPP network printer
 with zero drivers — `uprint` just makes it a one-liner.
 
+It comes with a companion **web app** (`web/`) — a mobile-first Print Studio
+with a document library, photo editor, text editor, scanner (camera/upload),
+contacts-sheet printing, and browser-based printing. No build step, no
+backend; open `web/index.html` and it runs. Your documents never leave the
+device.
+
 ## What it does
 
 ```
@@ -28,6 +34,22 @@ Installed printers appear in **System Settings → Printers & Scanners** and in
 every application's print dialog — exactly like a natively installed printer,
 because that's what they are: plain CUPS queues using driverless
 IPP Everywhere (`lpadmin -m everywhere`).
+
+## Web app: Print Studio
+
+A mobile-first web companion in [`web/`](web/) — inspired by the classic
+printer apps, rebuilt open and tracker-free:
+
+- **Library** — documents in grid/list view with search; PDFs, photos, text docs
+- **Photo editor** — rotate, flip, B&W/sepia/invert, brightness/contrast/saturation, drag-to-crop, text overlays
+- **Text editor** — write formatted documents and print them
+- **Scan** — capture with the camera or upload a file
+- **Contacts sheet** — build a contact list and print it on A4
+- **Print** — everything prints through the browser's print dialog, which uses
+  the printers you installed with `uprint`
+
+Just open `web/index.html` — no server, no build, everything stored locally
+in your browser.
 
 ## Requirements
 
