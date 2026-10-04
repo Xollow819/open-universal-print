@@ -1,122 +1,96 @@
 # open-universal-print
 
-**uprint** — an open-source, terminal-native Universal Print client for macOS.
-No App Store, no Apple Developer account, no system extensions, no entitlements.
-Just Python, a terminal, and your Microsoft 365 tenant.
+**uprint** — driverless printing for macOS, from the terminal.
+No login. No accounts. No cloud. No printer drivers. No App Store.
 
-> Not affiliated with Microsoft. "Universal Print" is a trademark of Microsoft.
+Your Mac already knows how to print to any AirPrint / IPP network printer
+with zero drivers — `uprint` just makes it a one-liner.
 
 ## What it does
 
-Microsoft's official Universal Print Mac app installs a **system extension** to
-make cloud printers appear in macOS. That installer is fragile (and requires
-Apple's blessing). `uprint` takes a different, fully open route:
-
 ```
- ┌──────────────┐   IPP (localhost)   ┌──────────────────┐  Graph API   ┌────────────────┐
- │ Any Mac app  │ ─────────────────> │  uprint serve    │ ──────────> │ Universal Print│
- │ Print dialog │   PDF, driverless   │  (Python IPP     │  Entra ID    │ cloud (M365)   │
- └──────────────┘                    │   server)        │  device flow │                │
-        ▲                            └──────────────────┘              └────────────────┘
-        │                                    ▲ installed via lpadmin
- System Settings → Printers & Scanners ──────┘  (shows up like a native printer)
+$ uprint discover
+Scanning the local network for printers...
+
+NAME                            TYPE          DEVICE URI
+Office LaserJet                 _ipp._tcp     dnssd://Office%20LaserJet._ipp._tcp.local
+Library Printer                 _ipp._tcp     dnssd://Library%20Printer._ipp._tcp.local
+
+$ uprint install --printer "Office LaserJet"
+[asks for sudo once]
+Printer 'Office LaserJet' installed.
+
+$ uprint print thesis.pdf --printer "Office LaserJet"
+Sent to Office LaserJet.
 ```
 
-1. `uprint login` — sign in with Microsoft Entra ID (device-code flow, browser optional)
-2. `uprint printers` — list your Universal Print printer shares
-3. `uprint install` — creates a CUPS queue pointing at a localhost IPP server via `lpadmin`
-4. The printer now appears in **System Settings → Printers & Scanners** and in every
-   application's print dialog — exactly like Microsoft's app achieves, but with zero
-   Apple-ecosystem gatekeeping.
-5. `uprint serve` (or `uprint autostart`) runs the IPP server; printed PDFs are
-   forwarded to the Universal Print cloud automatically.
+Installed printers appear in **System Settings → Printers & Scanners** and in
+every application's print dialog — exactly like a natively installed printer,
+because that's what they are: plain CUPS queues using driverless
+IPP Everywhere (`lpadmin -m everywhere`).
 
-## Prerequisites
+## Requirements
 
 - macOS 11+ with Python 3.9+ (`python3 --version`)
-- A Microsoft 365 tenant with **Universal Print licenses** and at least one
-  registered, shared printer (your IT admin handles this)
-- An **app registration** in Microsoft Entra ID (see below) — you can create this
-  yourself; one admin-consent click is needed
+- A printer on your local network (Wi-Fi/Ethernet), **or** its IP address
+- Admin (sudo) once per printer install — your own password, nothing else
 
-## One-time setup: Entra app registration
-
-`uprint` talks to Microsoft Graph as *you* (delegated permissions). Register a
-public client app once:
-
-1. Go to **Entra admin center → Identity → Applications → App registrations → New registration**
-   - Name: `uprint` (anything)
-   - Supported account types: *Accounts in this organizational directory only*
-   - Redirect URI: *Public client (mobile & desktop)* → `https://login.microsoftonline.com/common/oauth2/nativeclient`
-2. **API permissions → Add a permission → Microsoft Graph → Delegated**:
-   - `PrinterShare.ReadBasic.All` — list printer shares
-   - `PrintJob.Create` — submit print jobs
-   - `PrintJob.ReadBasic` — read job status
-3. Click **Grant admin consent for \<your tenant\>** (an admin does this once).
-4. Copy the **Application (client) ID** from the Overview page.
+That's it. No Microsoft account, no Entra ID, no API keys, no sign-in.
 
 ## Usage
 
 ```bash
-# 0. Get the code (zero dependencies, stdlib only)
 git clone https://github.com/<you>/open-universal-print.git
 cd open-universal-print
 
-# 1. Sign in (device code: visit the URL, enter the code)
-python3 -m uprint login --client-id <APP_ID> [--tenant <TENANT_ID>]
+# Find printers on the network (Bonjour)
+python3 -m uprint discover
 
-# 2. See your printers
-python3 -m uprint printers
+# Install one — by discovered name, IP/hostname, or full device URI
+python3 -m uprint install --printer "Office LaserJet"
+python3 -m uprint install --printer 192.168.1.10 --name "Lab Printer"
+python3 -m uprint install --printer 192.168.1.10 --uri "ipp://192.168.1.10/ipp/print"
 
-# 3. Install one into macOS (asks for sudo once, for lpadmin)
-python3 -m uprint install --share "<SHARE_ID_OR_NAME>" --name "Office Printer"
+# Print anything (PDF, images, text...)
+python3 -m uprint print document.pdf --printer "Office LaserJet"
 
-# 4. Run the print server (keep this terminal open while printing)
-python3 -m uprint serve
-#    ...or run it automatically at login:
-python3 -m uprint autostart
-
-# 5. Print from any app. Check what happened:
-python3 -m uprint jobs
-
-# Bonus: print a PDF straight to the cloud, no local install needed
-python3 -m uprint print report.pdf --share "<SHARE_ID_OR_NAME>"
-
-# Cleanup
-python3 -m uprint uninstall --name "Office Printer"
-python3 -m uprint logout
+# Manage
+python3 -m uprint list
+python3 -m uprint remove --printer "Office LaserJet"
 ```
 
-Config, token cache, spool and logs live in `~/.config/uprint/`.
+Tip: make a shortcut so you don't type `python3 -m` every time:
 
-## How it works (for the curious)
+```bash
+echo 'alias uprint="python3 /path/to/open-universal-print -m uprint"' >> ~/.zshrc
+```
 
-- **IPP server** (`uprint/server.py` + `uprint/ipp.py`): a minimal IPP/1.1
-  implementation on `127.0.0.1:8631` using only the standard library. It answers
-  `Get-Printer-Attributes` (advertising PDF-only, so macOS renders print jobs to
-  PDF for us) and accepts `Print-Job`.
-- **Install** (`uprint/cups.py`): `lpadmin -m everywhere` creates a driverless
-  CUPS queue. CUPS queues always appear in Printers & Scanners — no driver,
-  no system extension, no Apple approval involved.
-- **Forwarding**: a background thread takes each spooled PDF and runs the
-  documented Graph flow — create job → create upload session → PUT bytes
-  (320 KiB chunks) → start job — against the mapped printer share.
-- **Auth** (`uprint/auth.py`): OAuth2 device-code flow with refresh-token
-  caching (`offline_access`), so you sign in once.
+## How it works
+
+- **discover** — asks macOS's built-in `dns-sd` to browse Bonjour for
+  `_ipp._tcp`, `_ipps._tcp` and `_printer._tcp` services. Whatever responds is
+  a printer your Mac can already talk to.
+- **install** — `lpadmin -p <name> -E -v <uri> -m everywhere`. The `everywhere`
+  model means "this printer speaks driverless IPP" — macOS renders the job
+  itself and no PPD or vendor driver is ever downloaded.
+- **print** — hands the file to the system spooler (`lp`). PDF, PNG, JPEG and
+  text all work out of the box.
 
 ## Limitations (honest)
 
-- PDF only. Universal Print accepts PDF universally; we deliberately advertise
-  just `application/pdf` so macOS does the rendering.
-- `uprint serve` must be running (foreground or via `autostart`) for installed
-  printers to accept jobs.
-- Installing via `lpadmin` needs admin (sudo) once per printer — normal macOS
-  behavior, your own password, no Apple Developer anything.
-- Tested on Linux for the IPP protocol/server path; the macOS `lpadmin` +
-  print-dialog path needs a real Mac + tenant to verify end to end. Bug reports
-  with logs (`~/.config/uprint/serve.log`, `jobs.log`) welcome.
-- Your Entra admin must grant consent for the three Graph permissions once.
+- Only printers your Mac can reach: local network (Bonjour/IP) printers.
+  Cloud print services (Universal Print, Google Cloud Print, vendor clouds)
+  need their own accounts by design — this tool deliberately doesn't do that.
+- `discover` needs Bonjour enabled on the network; some campus/enterprise
+  Wi-Fi networks block mDNS — use `--printer <IP>` directly in that case.
+- Installing/removing printers needs admin (sudo) once — standard macOS
+  behavior.
+- `dns-sd`/`lpadmin` behavior verified from docs and parser tests; the live
+  Bonjour + print-dialog path needs a real Mac with a real printer to confirm
+  end to end. Bug reports welcome.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT — see [LICENSE](LICENSE). Not affiliated with Microsoft or Apple.
+"Universal Print" is a trademark of Microsoft; this project is an independent
+driverless-printing toolkit.

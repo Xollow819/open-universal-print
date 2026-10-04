@@ -1,3 +1,3 @@
-"""uprint: open-source Universal Print client for macOS."""
+"""uprint: driverless printing for macOS. No login, no drivers, no cloud."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
